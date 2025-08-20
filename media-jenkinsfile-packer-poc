@@ -1,0 +1,74 @@
+pipeline 
+{
+  agent {
+    label 'Terraform-slave'
+  }
+  stages {
+    stage ("Checkout") {
+      steps {
+        script{
+        cleanWs()}
+          sh ''' 
+            git clone -b develop https://hva-cloudops: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@github.com/duclo/media-clipper-service.git
+          '''
+      }
+    }
+    stage ("Create Tags"){
+      steps {
+        sh '''
+          DATE=$(date +"%Y.%m.%d")
+          export tagversion="$(cat ./media-clipper-service/.version)"
+          cd media-clipper-service 
+          git tag -a v${tagversion}_devtest_${DATE} -m "adding tag by Jenkins pipeline"
+          git push origin v${tagversion}_devtest_${DATE}
+        '''
+      }
+    }
+    stage ("Build AMI"){
+      steps {
+        sh ''' 
+          export TAGNAME="$(cat ./media-clipper-service/.version)" 
+          export AWS_PROFILE=cloudops
+          cd ./media-clipper-service/Jenkins/duclo-dev 
+          sed -i "s/VERNAME/\${TAGNAME}/g" devmediaclipper.pkr.hcl
+          sed -i "s/BRANCHNAME/devtest_v\${TAGNAME}/g" devmediaclipper.pkr.hcl
+          packer init devmediaclipper.pkr.hcl && packer validate devmediaclipper.pkr.hcl && packer build devmediaclipper.pkr.hcl 2>&1 | sudo tee output.txt            
+        '''
+      }
+    }
+    stage ("Check Ami name ") {
+      steps {
+        script{
+          def status = sh(script: "grep ami- ./media-clipper-service/Jenkins/duclo-dev/devmediaclipper.json", returnStdout: true )
+          if (status != 0) {
+            echo "Media Clipper service New AMI successfully created with name ${status}"
+          } 
+        }
+      }
+    }
+    stage ("Checkout JenkinsDeploy"){
+      steps {
+        sh ''' 
+          git clone -b JenkinsDeploy https://hva-cloudops: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@github.com/duclo/media-clipper-service.git version
+          sed -i \"/image_name/d\" ./version/duclo-dev/media-clipper-dev.tfvar 
+          export imagename="$(cat ./media-clipper-service/Jenkins/duclo-dev/devmediaclipper.json | jq ".builds[0].artifact_id" | sed 's/"//g' | cut -d : -f2)"
+          echo "\nimage_name=\\"$imagename\\"" >> ./version/duclo-dev/media-clipper-dev.tfvar
+          cat ./version/duclo-dev/media-clipper-dev.tfvar
+        '''
+      } 
+    }
+    stage ("push Deploy"){
+      steps {
+        sh ''' 
+          export imagename="$(cat ./media-clipper-service/Jenkins/duclo-dev/devmediaclipper.json | jq ".builds[0].artifact_id" | sed 's/"//g' | cut -d : -f2)"
+          cd version
+          git status
+          git add .
+          git commit -m "Add media-clipper-service image_name.\${imagename}.tfvars file"
+          git push origin JenkinsDeploy
+        '''
+      }
+    }
+  }
+
+}
