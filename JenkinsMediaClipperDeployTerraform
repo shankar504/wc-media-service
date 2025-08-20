@@ -1,0 +1,38 @@
+pipeline
+{
+  agent {
+    label 'Terraform-slave'
+  }
+  stages {
+      stage ("Checkout") {
+        steps {
+          script{
+            cleanWs()
+            checkout scmGit(branches: [[name: '*/JenkinsDeploy']], extensions: [], userRemoteConfigs: [[credentialsId: 'hva-cloudops', url: 'https://github.com/duclo/media-clipper-service.git']])
+          }
+        }
+      }
+      stage ("Set Aws Profile"){
+        steps {
+          sh ''' cd hva-dev
+              terraform init
+          '''
+        }
+      } 
+      stage ("Plan"){
+        steps {
+          sh '''  cd hva-dev
+              cat media-clipper-dev.tfvar ;
+              terraform plan --var-file=media-clipper-dev.tfvar
+          '''
+        }
+      }
+      stage ("Apply"){
+        steps {
+          sh '''  cd hva-dev
+              terraform apply --var-file=media-clipper-dev.tfvar -auto-approve 
+          '''
+        }
+      }        
+  }
+}
