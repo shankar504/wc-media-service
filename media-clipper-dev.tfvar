@@ -1,0 +1,6 @@
+lt_name="dev-media-clipper-LT"
+asg_name="dev-Media-Clipper-Service-asg"
+health_check_type="ELB"
+instance_type="t2.micro"
+
+image_name="ami-0f53f2461f07b1e58"
